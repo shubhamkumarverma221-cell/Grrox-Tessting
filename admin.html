@@ -1,0 +1,164 @@
+<!DOCTYPE html>
+<html lang="hi">
+
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width,initial-scale=1">
+    <title>GRROX Admin</title>
+    <style>
+        body {
+            font-family: system-ui, sans-serif;
+            margin: 0;
+            background: #f5f6f8;
+            color: #222
+        }
+
+        header {
+            background: #2874f0;
+            color: #fff;
+            padding: 14px 20px;
+            font-weight: 700
+        }
+
+        main {
+            max-width: 980px;
+            margin: 20px auto;
+            padding: 0 14px
+        }
+
+        .card {
+            background: #fff;
+            border: 1px solid #e5e7eb;
+            border-radius: 10px;
+            padding: 16px;
+            margin-bottom: 16px
+        }
+
+        .stats {
+            display: flex;
+            gap: 12px;
+            flex-wrap: wrap
+        }
+
+        .stats div {
+            flex: 1;
+            min-width: 120px;
+            background: #fff;
+            border: 1px solid #e5e7eb;
+            border-radius: 10px;
+            padding: 14px
+        }
+
+        .stats b {
+            display: block;
+            font-size: 26px;
+            color: #2874f0
+        }
+
+        input,
+        button {
+            padding: 10px;
+            border-radius: 7px;
+            border: 1px solid #ccc;
+            font-size: 14px
+        }
+
+        button {
+            background: #2874f0;
+            color: #fff;
+            border: 0;
+            cursor: pointer
+        }
+
+        button.red {
+            background: #e53935
+        }
+
+        .row {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            gap: 10px;
+            padding: 9px 0;
+            border-bottom: 1px solid #eee;
+            flex-wrap: wrap
+        }
+
+        .tag {
+            font-size: 12px;
+            padding: 2px 8px;
+            border-radius: 99px;
+            background: #fff3cd
+        }
+
+        .tag.v {
+            background: #d4edda
+        }
+    </style>
+</head>
+
+<body>
+    <header>GRROX Admin Panel</header>
+    <main>
+        <div id="loginBox" class="card">
+            <h3>Admin Login</h3>
+            <input id="key" type="password" placeholder="ADMIN_KEY"> <button onclick="login()">Login</button>
+        </div>
+        <div id="app" style="display:none">
+            <div class="stats" id="stats"></div><br>
+            <div class="card">
+                <h3>Businesses</h3>
+                <div id="biz"></div>
+            </div>
+            <div class="card">
+                <h3>Deals</h3>
+                <div id="deals"></div>
+            </div>
+            <div class="card">
+                <h3>Customers</h3>
+                <div id="custs"></div>
+            </div>
+            <button class="red" onclick="logout()">Logout</button>
+        </div>
+    </main>
+    <script>
+        const API = window.GRROX_API || (location.protocol.startsWith("http") && location.port === "5000" ? location.origin : "http://localhost:5000");
+        const esc = v => String(v == null ? "" : v).replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+        const tok = () => sessionStorage.getItem("grroxAdmin");
+        async function api(path, opt = {}) {
+            const r = await fetch(API + "/api/admin" + path, { ...opt, headers: { "Content-Type": "application/json", Authorization: "Bearer " + (tok() || "") } });
+            const d = await r.json().catch(() => ({}));
+            if (!r.ok) { if (r.status === 401 && tok()) logout(); throw new Error(d.message || "Request failed"); }
+            return d;
+        }
+        async function login() {
+            try {
+                const d = await api("/login", { method: "POST", body: JSON.stringify({ key: document.getElementById("key").value }) });
+                sessionStorage.setItem("grroxAdmin", d.token); load();
+            } catch (e) { alert(e.message); }
+        }
+        function logout() { sessionStorage.removeItem("grroxAdmin"); location.reload(); }
+        async function load() {
+            if (!tok()) return;
+            try {
+                const [s, b, d, c] = await Promise.all([api("/stats"), api("/businesses"), api("/deals"), api("/customers")]);
+                login_.style.display = "none"; app.style.display = "block";
+                stats.innerHTML = Object.entries(s).map(([k, v]) => `<div><b>${v}</b>${k}</div>`).join("");
+                biz.innerHTML = b.businesses.map(x => `<div class="row"><span><b>${esc(x.businessName)}</b> • ${esc(x.area)} • ${esc(x.mobile)}
+      <span class="tag ${x.verificationStatus === "Verified" ? "v" : ""}">${esc(x.verificationStatus)}</span></span>
+      <span><button onclick="verify('${esc(x._id)}')">Verify / Unverify</button>
+      <button class="red" onclick="delBiz('${esc(x._id)}')">Delete</button></span></div>`).join("") || "Koi business nahi.";
+                deals.innerHTML = d.products.map(x => `<div class="row"><span>${esc(x.name)} • ₹${esc(x.price)} • ${esc(x.shopName)} • 👁 ${x.views || 0}</span>
+      <button class="red" onclick="delDeal('${esc(x._id)}')">Delete</button></div>`).join("") || "Koi deal nahi.";
+                custs.innerHTML = c.customers.map(x => `<div class="row"><span><b>${esc(x.name || "(profile baaki)")}</b> • ${esc(x.mobile)} • ID ${esc(x.grroxId || "-")} • ${esc(x.area || "-")}</span></div>`).join("") || "Koi customer nahi.";
+            } catch (e) { console.error(e); }
+        }
+        async function delBiz(id) { if (!confirm("Business aur uski saari deals delete ho jayengi. Pakka?")) return; try { await api("/businesses/" + id, { method: "DELETE" }); load(); } catch (e) { alert(e.message); } }
+        async function verify(id) { try { await api("/businesses/" + id + "/verify", { method: "POST" }); load(); } catch (e) { alert(e.message); } }
+        async function delDeal(id) { if (!confirm("Deal delete karein?")) return; try { await api("/deals/" + id, { method: "DELETE" }); load(); } catch (e) { alert(e.message); } }
+        const login_ = document.getElementById("loginBox"), app = document.getElementById("app"), stats = document.getElementById("stats"), biz = document.getElementById("biz"), deals = document.getElementById("deals"), custs = document.getElementById("custs");
+        load();
+    </script>
+</body>
+
+</html>
