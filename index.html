@@ -4944,7 +4944,8 @@
                 if (location.port === "5000") return location.origin;
                 if (!local && !h.endsWith("github.io")) return location.origin;
             }
-            return "http://localhost:5000";
+           if (!local && h.endsWith("github.io")) return "https://new-grox.onrender.com";
+return "http://localhost:5000";
         })();
         let deals = [];
 
